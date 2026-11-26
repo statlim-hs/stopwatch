@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스탑워치</title>
+<style>
+  :root { --dw: min(28vw, 150px); }
+  body { margin: 0; min-height: 100vh; font-family: "Malgun Gothic", sans-serif;
+         background: linear-gradient(#bfe3ff, #f3faff) fixed; display: flex; justify-content: center;
+         padding: 32px 16px calc(var(--dw) * 1.3 + 80px); box-sizing: border-box; }
+
+  /* 스탑워치 */
+  .card { width: 100%; max-width: 400px; align-self: flex-start; background: #fffc;
+          border-radius: 24px; padding: 20px; text-align: center; }
+  #time { font-size: 64px; font-weight: 200; font-variant-numeric: tabular-nums; transition: color .4s; }
+  body.fight #time { color: #e0342a; font-weight: 800; }
+  body.peace #time { color: #1f6feb; font-weight: 800; }
+  .btns { display: flex; justify-content: space-between; margin: 16px 0; }
+  button { width: 80px; height: 80px; border-radius: 50%; border: 0; font-size: 16px; cursor: pointer; }
+  #go { background: #34c759; color: #fff; }
+  #go.on { background: #ff3b30; }
+  #laps { list-style: none; padding: 0; margin: 0; }
+  #laps li { display: flex; justify-content: space-between; padding: 8px; border-top: 1px solid #0001; }
+
+  /* 장면 */
+  .scene { position: fixed; inset: auto 0 0 0; height: calc(var(--dw) * 1.3 + 70px);
+           overflow: hidden; pointer-events: none; z-index: 3; }
+  .grass { position: absolute; inset: auto -10% 0; height: 55%; background: #9bd77a; border-radius: 50% 50% 0 0; }
+  .dog, .arms { position: absolute; bottom: 18px; left: 50%; transition: transform .6s; }
+  .dog { width: var(--dw); margin-left: calc(var(--dw) / -2); }
+  .arms { width: calc(var(--dw) * 2); margin-left: calc(var(--dw) * -1); opacity: 0; transition: opacity .2s; }
+  svg { display: block; width: 100%; overflow: visible; }
+
+  /* 표정: data-mood 와 같은 클래스만 보이게 */
+  .m { display: none; }
+  [data-mood=happy] .happy, [data-mood=angry] .angry, [data-mood=sad] .sad,
+  [data-mood=surprised] .surprised, [data-mood=love] .love { display: inline; }
+
+  /* 상태별 움직임 */
+  .shake .dog svg { animation: tremble .12s infinite; }
+  .fight .dog svg { animation: scuffle .22s infinite; }
+  .handshake .arms.shake, .hug .arms.hug { opacity: 1; transition-delay: .55s; }
+  .handshake .hands { animation: pump .28s infinite alternate; }
+  @keyframes tremble { 50% { transform: translateX(2px) } }
+  @keyframes scuffle { 25% { transform: translate(6px,-10px) rotate(6deg) } 75% { transform: translate(-4px,-6px) rotate(-5deg) } }
+  @keyframes pump { from { transform: translateY(-5px) } to { transform: translateY(5px) } }
+
+  /* 말풍선 */
+  .bubble { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #fff;
+            padding: 4px 10px; border-radius: 12px; font-weight: 700; white-space: nowrap;
+            box-shadow: 0 2px 6px #0002; opacity: 0; transition: opacity .2s; }
+  .bubble.show { opacity: 1; }
+
+  /* 싸움 구름 */
+  .cloud { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+           font-size: calc(var(--dw) * .8); opacity: 0; transition: opacity .3s; }
+  body.fight .cloud { opacity: 1; animation: scuffle .3s infinite; }
+
+  /* 하트 */
+  .heart { position: fixed; left: 50%; bottom: calc(var(--dw) * .9); z-index: 4; pointer-events: none;
+           animation: burst 2s ease-out forwards; }
+  @keyframes burst { from { transform: scale(.3) } to { transform: translate(var(--x), var(--y)) scale(1.3); opacity: 0 } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="time">00:00.00</div>
+  <div class="btns"><button id="lap" disabled>랩</button><button id="go">시작</button></div>
+  <ul id="laps"></ul>
+</div>
+
+<div class="scene">
+  <div class="grass"></div>
+  <div class="dog" id="L"><div class="bubble"></div></div>
+  <div class="dog" id="R"><div class="bubble"></div></div>
+  <div class="arms shake"></div>
+  <div class="arms hug"></div>
+  <div class="cloud">💥</div>
+</div>
+
+<script>
+/* ---------- 스탑워치 ---------- */
+const $ = id => document.getElementById(id);
+let on = false, t0 = 0, acc = 0, last = 0, n = 0;
+const now = () => on ? acc + performance.now() - t0 : acc;
+const fmt = ms => [ms / 60000, ms / 1000 % 60].map(v => String(Math.floor(v)).padStart(2, '0')).join(':')
+                  + '.' + String(Math.floor(ms / 10) % 100).padStart(2, '0');
+
+(function tick() { $('time').textContent = fmt(now()); requestAnimationFrame(tick); })();
+
+function toggle() {
+  on ? acc = now() : t0 = performance.now();
+  on = !on;
+  $('go').textContent = on ? '정지' : '시작';
+  $('go').classList.toggle('on', on);
+  $('lap').textContent = on ? '랩' : '초기화';
+  $('lap').disabled = false;
+}
+function lapOrReset() {
+  if (on) {
+    const t = now();
+    $('laps').insertAdjacentHTML('afterbegin', `<li><span>랩 ${++n}</span><span>${fmt(t - last)}</span></li>`);
+    last = t;
+  } else {
+    acc = last = n = 0; $('laps').innerHTML = '';
+    $('lap').textContent = '랩'; $('lap').disabled = true;
+  }
+}
+$('go').onclick = toggle;
+$('lap').onclick = lapOrReset;
+onkeydown = e => { if (e.code === 'Space') { e.preventDefault(); toggle(); } };
+
+/* ---------- 강아지 ---------- */
+// 표정 5종 (ink = 선 색)
+const face = ink => {
+  const s = `stroke="${ink}" stroke-width="2.4" stroke-linecap="round" fill="none"`;
+  const eyes = r => `<circle cx="66" cy="64" r="${r}" fill="${ink}"/><circle cx="94" cy="64" r="${r}" fill="${ink}"/>`;
+  return `
+  <g class="m happy">${eyes(5)}<path d="M72 85 Q76 90 80 85 Q84 90 88 85" ${s}/></g>
+  <g class="m angry"><path d="M57 52 L73 59 M103 52 L87 59" ${s} stroke-width="3.2"/>${eyes(4)}
+     <path d="M70 91 Q80 82 90 91 Z" fill="${ink}"/><text x="110" y="38" font-size="20">💢</text></g>
+  <g class="m sad"><path d="M58 57 L72 52 M102 57 L88 52 M73 91 Q80 85 87 91" ${s}/>${eyes(4.5)}
+     <path d="M62 71 Q58 77 62 80 Q66 77 62 71Z" fill="#6ec6ff"/></g>
+  <g class="m surprised">${eyes(6.5)}<ellipse cx="80" cy="90" rx="4" ry="5" fill="${ink}"/></g>
+  <g class="m love"><path d="M60 66 Q66 58 72 66 M88 66 Q94 58 100 66" ${s}/>
+     <path d="M71 84 Q80 97 89 84 Z" fill="${ink}"/><circle cx="55" cy="77" r="6" fill="#ff9db5"/><circle cx="105" cy="77" r="6" fill="#ff9db5"/></g>`;
+};
+
+// 흰 말티즈
+$('L').insertAdjacentHTML('beforeend', `<svg viewBox="0 0 160 170">
+  <ellipse cx="80" cy="125" rx="44" ry="38" fill="#fff" stroke="#e3ded6" stroke-width="2"/>
+  <circle cx="80" cy="64" r="36" fill="#fff" stroke="#e3ded6" stroke-width="2"/>
+  <ellipse cx="44" cy="82" rx="15" ry="32" fill="#f8f4ee"/><ellipse cx="116" cy="82" rx="15" ry="32" fill="#f8f4ee"/>
+  <path d="M80 25 L65 16 V34 Z M80 25 L95 16 V34 Z" fill="#ff8fb1"/>
+  <ellipse cx="80" cy="77" rx="6" ry="4.5" fill="#222"/>${face('#222')}</svg>`);
+
+// 갈색 푸들
+$('R').insertAdjacentHTML('beforeend', `<svg viewBox="0 0 160 170">
+  <ellipse cx="80" cy="128" rx="40" ry="36" fill="#b0703f"/>
+  <circle cx="80" cy="66" r="32" fill="#b0703f"/>
+  <g fill="#c4824e"><circle cx="64" cy="38" r="13"/><circle cx="96" cy="38" r="13"/><circle cx="80" cy="30" r="15"/></g>
+  <g fill="#8a5129"><circle cx="45" cy="75" r="12"/><circle cx="44" cy="95" r="12"/><circle cx="115" cy="75" r="12"/><circle cx="116" cy="95" r="12"/></g>
+  <ellipse cx="80" cy="82" rx="16" ry="11" fill="#d39a68"/>
+  <ellipse cx="80" cy="77" rx="6" ry="4.5" fill="#2b1a10"/>${face('#2b1a10')}</svg>`);
+
+// 팔 (악수 / 포옹)
+const arm = (d, c, x, y) => `<path d="${d}" stroke="${c}" stroke-width="16" stroke-linecap="round" fill="none"/><circle cx="${x}" cy="${y}" r="10" fill="${c}"/>`;
+document.querySelector('.arms.shake').innerHTML = `<svg viewBox="0 0 320 170"><g class="hands">
+  ${arm('M122 120 Q140 112 153 108', '#f2eee8', 155, 107)}${arm('M200 120 Q182 112 169 108', '#8a5129', 167, 108)}</g></svg>`;
+document.querySelector('.arms.hug').innerHTML = `<svg viewBox="0 0 320 170">
+  ${arm('M188 112 Q140 90 96 116', '#8a5129', 94, 117)}${arm('M132 106 Q180 82 224 112', '#f2eee8', 226, 114)}</svg>`;
+
+/* ---------- 이야기 (약 15초 반복) ----------
+   [시간ms, 거리, 왼쪽표정, 오른쪽표정, 왼쪽말, 오른쪽말, 상태] */
+const STORY = [
+  [1500, 1.1,  'happy',     'happy'],
+  [900,  1.0,  'happy',     'angry', '',        '멍!'],
+  [800,  0.9,  'surprised', 'angry', '?!'],
+  [1200, 0.75, 'angry',     'angry', '왈왈!',   '으르릉…', 'fight shake'],
+  [2200, 0.3,  'angry',     'angry', '',        '',        'fight'],
+  [1500, 1.2,  'sad',       'angry', '흥…',     '칫!'],
+  [1000, 1.2,  'sad',       'sad',   '',        '…'],
+  [1100, 0.8,  'surprised', 'sad',   '',        '미안해…'],
+  [2000, 0.45, 'happy',     'happy', '나도 미안!', '',     'peace handshake'],
+  [3000, 0.3,  'love',      'love',  '꼬옥~',   '헤헤',    'peace hug hearts'],
+];
+
+let step = 0, timer;
+function play() {
+  const [ms, x, lm, rm, lb = '', rb = '', state = ''] = STORY[step];
+  [[$('L'), -x, lm, lb], [$('R'), x, rm, rb]].forEach(([dog, dx, mood, say]) => {
+    dog.style.transform = `translateX(calc(${dx} * var(--dw)))`;
+    dog.dataset.mood = mood;
+    const b = dog.querySelector('.bubble');
+    b.textContent = say; b.classList.toggle('show', !!say);
+  });
+  document.body.className = state;
+  clearInterval(timer);
+  if (state.includes('hearts')) timer = setInterval(heart, 40);
+  step = (step + 1) % STORY.length;
+  setTimeout(play, ms);
+}
+
+function heart() {
+  const h = document.createElement('span'), a = Math.PI * (1 + Math.random()), r = innerHeight * (.5 + Math.random() * .7);
+  h.className = 'heart';
+  h.textContent = ['❤️', '💕', '💖', '💗'][Math.floor(Math.random() * 4)];
+  h.style.cssText = `--x:${Math.cos(a) * r}px; --y:${Math.sin(a) * r}px; font-size:${18 + Math.random() * 30}px`;
+  document.body.appendChild(h);
+  setTimeout(() => h.remove(), 2000);
+}
+play();
+</script>
+</body>
+</html>
